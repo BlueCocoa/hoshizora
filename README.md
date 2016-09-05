@@ -1,5 +1,5 @@
 # hoshizora
-Mix two images using alpha channel
+Mix two images using alpha channel to create a beautiful effect
 
 Tested on macOS
 
