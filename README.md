@@ -8,13 +8,14 @@ Tested on macOS
 
 ### Usage
 
-```hoshizora -f front.jpg -b back.jpg -o rem.png -t 224```
+```hoshizora -f front.jpg -b back.jpg -o rem.png -1 224 -2 210```
 
 ```
 -f front layer, any image format that supported by OpenCV
 -b back layer, any image format that supported by OpenCV
 -o output image, any image format within alpha channel and is supported by OpenCV
--t threshold, optional argument
+-1 front layer threshold, optional argument
+-2 back layer threshold, optional argument
 ```
 
 ### Screenshots

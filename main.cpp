@@ -32,14 +32,16 @@ using namespace cv;
 char * frontlayer = NULL;
 char * backlayer = NULL;
 char * output = NULL;
-int threshold_value = K_DEFAULT_THRESHOLD;
+int front_threshold_value = K_DEFAULT_THRESHOLD;
+int back_threshold_value = K_DEFAULT_THRESHOLD;
 
 static struct option long_options[] = {
-    {"help",      no_argument,       0, 'h'},
-    {"front",     required_argument, 0, 'f'},
-    {"back",      required_argument, 0, 'b'},
-    {"ouput",     required_argument, 0, 'o'},
-    {"threshold", optional_argument, 0, 't'},
+    {"help",            no_argument,       0, 'h'},
+    {"front",           required_argument, 0, 'f'},
+    {"back",            required_argument, 0, 'b'},
+    {"ouput",           required_argument, 0, 'o'},
+    {"front threshold", optional_argument, 0, '1'},
+    {"back threshold",  optional_argument, 0, '2'},
     {0, 0, 0, 0}
 };
 
@@ -47,7 +49,12 @@ static struct option long_options[] = {
  *  @brief Prints the usage message of this program.
  */
 void print_usage() {
-    fprintf(stderr, "Usage: hoshizora [-f front layer] [-b back layer] [-t threshold] [-o ouput]\n"
+    fprintf(stderr, "Usage: hoshizora [-f front layer]\n"
+                    "                 [-b back layer]\n"
+                    "                 [-1 front threshold]\n"
+                    "                 [-2 back threshold]\n"
+                    "                 [-o ouput]\n"
+                    "\n"
                     "                 -h To print this help\n");
 }
 
@@ -57,7 +64,7 @@ int parse_command_line(int argc, char * const * argv) {
     
     while (1) {
         option_index = 0;
-        c = getopt_long (argc, argv, "hf:b:t:o:", long_options, &option_index);
+        c = getopt_long (argc, argv, "hf:b:1:2:o:", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -66,7 +73,6 @@ int parse_command_line(int argc, char * const * argv) {
                     break;
                 break;
             case 'h':
-                print_usage();
                 return 0;
             case 'o': {
                 asprintf(&output, "%s", optarg);
@@ -80,22 +86,29 @@ int parse_command_line(int argc, char * const * argv) {
                 asprintf(&backlayer, "%s", optarg);
                 break;
             }
-            case 't': {
-                threshold_value = atoi(optarg);
+            case '1': {
+                front_threshold_value = atoi(optarg);
+                break;
+            }
+            case '2': {
+                back_threshold_value = atoi(optarg);
                 break;
             }
             case '?':
-                print_usage();
                 return 0;
             default:
                 abort();
         }
     }
     
-    return ENSURE_NOT_NULL(frontlayer) &&
-           ENSURE_NOT_NULL(backlayer)  &&
-           ENSURE_NOT_NULL(output) &&
-           threshold_value >= 0;
+    return ENSURE_NOT_NULL(frontlayer)    &&
+           ENSURE_NOT_NULL(backlayer)     &&
+           ENSURE_NOT_NULL(output)        &&
+           (front_threshold_value >= 0    &&
+            front_threshold_value <= 255) &&
+           (back_threshold_value >= 0     &&
+            back_threshold_value <= 255)
+    ;
 }
 
 /**
@@ -160,7 +173,7 @@ int main(int argc, const char * argv[]) {
     // for front layer
     // we remove 'white color' (above threshold)
     for (auto pixel = front.begin<Vec4b>(); pixel != front.end<Vec4b>(); pixel++) {
-        if ((*pixel)[0] < threshold_value) {
+        if ((*pixel)[0] < front_threshold_value) {
             (*pixel)[2] = (*pixel)[1] = (*pixel)[0] = 0;
             (*pixel)[3] = 255;
         } else {
@@ -172,7 +185,7 @@ int main(int argc, const char * argv[]) {
     // for back layer
     // we remove 'black color' (below threshold)
     for (auto pixel = back.begin<Vec4b>(); pixel != back.end<Vec4b>(); pixel++) {
-        if ((*pixel)[0] > threshold_value) {
+        if ((*pixel)[0] > back_threshold_value) {
             (*pixel)[2] = (*pixel)[1] = (*pixel)[0] = 255;
             (*pixel)[3] = 255;
         } else {
@@ -184,7 +197,7 @@ int main(int argc, const char * argv[]) {
     Mat result = front.clone();
     Rect roi = Rect((front.cols - back.cols) / 2, (front.rows - back.rows) / 2, back.cols, back.rows);
     Mat fusion = result(roi);
-    cv::addWeighted(fusion, 0.5, back, 0.5, 0.0, fusion);
+    addWeighted(fusion, 0.5, back, 0.5, 0.0, fusion);
     
     imwrite(output, result);
 
