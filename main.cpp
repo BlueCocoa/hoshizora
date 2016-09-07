@@ -171,7 +171,7 @@ int magic(char* filename, Size size, Mat& frontlayer, Mat& backlayer) {
             uchar _y = (*back_pixel)[0];
             uchar _x = (*front_pixel)[0];
             uchar A = min(_y + 255 - _x, 255);
-            uchar G = (_y * 255.0f) / A;
+            uchar G = (_y * 255.0f) / (_y + 255 - _x);
             row[x * 2 + 1] = A;
             row[x * 2]     = G;
             front_pixel++;
