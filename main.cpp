@@ -31,12 +31,16 @@ using namespace cv;
 char * front_file = NULL;
 char * back_file = NULL;
 char * output = NULL;
+int front_increse = 0;
+int back_decrese = 0;
 
 static struct option long_options[] = {
-    {"help",            no_argument,       0, 'h'},
-    {"front",           required_argument, 0, 'f'},
-    {"back",            required_argument, 0, 'b'},
-    {"ouput",           required_argument, 0, 'o'},
+    {"help",               no_argument,       0, 'h'},
+    {"front",              required_argument, 0, 'f'},
+    {"back",               required_argument, 0, 'b'},
+    {"ouput",              required_argument, 0, 'o'},
+    {"increse brightness", optional_argument, 0, 'i'},
+    {"decrese brightness", optional_argument, 0, 'd'},
     {0, 0, 0, 0}
 };
 
@@ -46,6 +50,8 @@ static struct option long_options[] = {
 void print_usage() {
     fprintf(stderr, "Usage: hoshizora [-f front layer]\n"
                     "                 [-b back layer]\n"
+                    "                 [-i increse brightness for front layer]\n"
+                    "                 [-d decrese brightness for back layer]\n"
                     "                 [-o ouput]\n"
                     "\n"
                     "                 -h To print this help\n");
@@ -57,7 +63,7 @@ int parse_command_line(int argc, char * const * argv) {
     
     while (1) {
         option_index = 0;
-        c = getopt_long (argc, argv, "hf:b:o:", long_options, &option_index);
+        c = getopt_long (argc, argv, "hf:b:i:d:o:", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -77,6 +83,18 @@ int parse_command_line(int argc, char * const * argv) {
             }
             case 'b': {
                 asprintf(&back_file, "%s", optarg);
+                break;
+            }
+            case 'i': {
+                // no abs here
+                // intended, in case you need decrese the brightness for front layer
+                front_increse = atoi(optarg);
+                break;
+            }
+            case 'd': {
+                // no abs here
+                // intended, in case you need increse the brightness for back layer
+                back_decrese = atoi(optarg);
                 break;
             }
             case '?':
@@ -171,7 +189,7 @@ int magic(char* filename, Size size, Mat& frontlayer, Mat& backlayer) {
             uchar _y = (*back_pixel)[0];
             uchar _x = (*front_pixel)[0];
             uchar A = min(_y + 255 - _x, 255);
-            uchar G = (_y * 255.0f) / (_y + 255 - _x);
+            uchar G = (_y * 255.0f) / A;
             row[x * 2 + 1] = A;
             row[x * 2]     = G;
             front_pixel++;
@@ -228,6 +246,10 @@ int main(int argc, const char * argv[]) {
             resize(front, front, 0, back.rows);
         }
     }
+    
+    // adjust brightness
+    front = front + Scalar(front_increse);
+    back = back + Scalar(-back_decrese);
 
     // new layers, same size
     auto size = Size(max(front.cols, back.cols), max(front.rows, back.rows));
@@ -237,7 +259,7 @@ int main(int argc, const char * argv[]) {
     
     overlay_center(frontlayer, front);
     overlay_center(backlayer, back);
-    
+
     magic(output, size, frontlayer, backlayer);
 
     free((void *)front_file);
