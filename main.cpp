@@ -12,6 +12,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/version.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <libpng16/png.h>
 
 using namespace cv;
 
@@ -23,25 +24,19 @@ using namespace cv;
 #define CV_CVTCOLOR_GREY2BGRA COLOR_GRAY2BGRA
 #endif
 
-#define K_DEFAULT_THRESHOLD 192
 #define K_TRANSPARENT_ALPHA 0
-#define deviant 255
 
 #define ENSURE_NOT_NULL(x) (x != nullptr)
 
-char * frontlayer = NULL;
-char * backlayer = NULL;
+char * front_file = NULL;
+char * back_file = NULL;
 char * output = NULL;
-int front_threshold_value = K_DEFAULT_THRESHOLD;
-int back_threshold_value = K_DEFAULT_THRESHOLD;
 
 static struct option long_options[] = {
     {"help",            no_argument,       0, 'h'},
     {"front",           required_argument, 0, 'f'},
     {"back",            required_argument, 0, 'b'},
     {"ouput",           required_argument, 0, 'o'},
-    {"front threshold", optional_argument, 0, '1'},
-    {"back threshold",  optional_argument, 0, '2'},
     {0, 0, 0, 0}
 };
 
@@ -51,8 +46,6 @@ static struct option long_options[] = {
 void print_usage() {
     fprintf(stderr, "Usage: hoshizora [-f front layer]\n"
                     "                 [-b back layer]\n"
-                    "                 [-1 front threshold]\n"
-                    "                 [-2 back threshold]\n"
                     "                 [-o ouput]\n"
                     "\n"
                     "                 -h To print this help\n");
@@ -64,7 +57,7 @@ int parse_command_line(int argc, char * const * argv) {
     
     while (1) {
         option_index = 0;
-        c = getopt_long (argc, argv, "hf:b:1:2:o:", long_options, &option_index);
+        c = getopt_long (argc, argv, "hf:b:o:", long_options, &option_index);
         if (c == -1)
             break;
         switch (c) {
@@ -79,19 +72,11 @@ int parse_command_line(int argc, char * const * argv) {
                 break;
             }
             case 'f': {
-                asprintf(&frontlayer, "%s", optarg);
+                asprintf(&front_file, "%s", optarg);
                 break;
             }
             case 'b': {
-                asprintf(&backlayer, "%s", optarg);
-                break;
-            }
-            case '1': {
-                front_threshold_value = atoi(optarg);
-                break;
-            }
-            case '2': {
-                back_threshold_value = atoi(optarg);
+                asprintf(&back_file, "%s", optarg);
                 break;
             }
             case '?':
@@ -101,14 +86,9 @@ int parse_command_line(int argc, char * const * argv) {
         }
     }
     
-    return ENSURE_NOT_NULL(frontlayer)    &&
-           ENSURE_NOT_NULL(backlayer)     &&
-           ENSURE_NOT_NULL(output)        &&
-           (front_threshold_value >= 0    &&
-            front_threshold_value <= 255) &&
-           (back_threshold_value >= 0     &&
-            back_threshold_value <= 255)
-    ;
+    return ENSURE_NOT_NULL(front_file)    &&
+           ENSURE_NOT_NULL(back_file)     &&
+           ENSURE_NOT_NULL(output);
 }
 
 /**
@@ -133,6 +113,89 @@ void resize(Mat &src, Mat &dest, int width, int height, int interpolation = INTE
     cv::resize(src, dest, Size(width, height), width/w, height/h, interpolation);
 }
 
+int magic(char* filename, Size size, Mat& frontlayer, Mat& backlayer) {
+    int code = 0;
+    FILE *fp = NULL;
+    png_structp png_ptr = NULL;
+    png_infop info_ptr = NULL;
+    png_bytep row = NULL;
+    auto front_pixel = frontlayer.begin<Vec<uchar, 1>>();
+    auto back_pixel = backlayer.begin<Vec<uchar, 1>>();
+    
+    // Open file for writing (binary mode)
+    fp = fopen(filename, "wb");
+    if (fp == NULL) {
+        fprintf(stderr, "Could not open file %s for writing\n", filename);
+        code = 1;
+        goto finalise;
+    }
+    
+    // Initialize write structure
+    png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (png_ptr == NULL) {
+        fprintf(stderr, "Could not allocate write struct\n");
+        code = 1;
+        goto finalise;
+    }
+    
+    // Initialize info structure
+    info_ptr = png_create_info_struct(png_ptr);
+    if (info_ptr == NULL) {
+        fprintf(stderr, "Could not allocate info struct\n");
+        code = 1;
+        goto finalise;
+    }
+    
+    // Setup Exception handling
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        fprintf(stderr, "Error during png creation\n");
+        code = 1;
+        goto finalise;
+    }
+    png_init_io(png_ptr, fp);
+    
+    // Write header (8 bit colour depth)
+    png_set_IHDR(png_ptr, info_ptr, size.width, size.height,
+                 8, PNG_COLOR_TYPE_GRAY_ALPHA, PNG_INTERLACE_NONE,
+                 PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+    
+    png_write_info(png_ptr, info_ptr);
+    
+    // Allocate memory for one row (2 bytes per pixel - Gray+Alpha)
+    row = (png_bytep)malloc(2 * size.width * sizeof(png_byte));
+    
+    // Write image data
+    
+    for (int y = 0; y < size.height; y++) {
+        for (int x = 0; x < size.width; x++) {
+            uchar _y = (*back_pixel)[0];
+            uchar _x = (*front_pixel)[0];
+            uchar A = min(_y + 255 - _x, 255);
+            uchar G = (_y * 255.0f) / A;
+            row[x * 2 + 1] = A;
+            row[x * 2]     = G;
+            front_pixel++;
+            back_pixel++;
+        }
+        png_write_row(png_ptr, row);
+    }
+    
+    // End write
+    png_write_end(png_ptr, NULL);
+finalise:
+    if (fp != NULL) fclose(fp);
+    if (info_ptr != NULL) png_free_data(png_ptr, info_ptr, PNG_FREE_ALL, -1);
+    if (png_ptr != NULL) png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
+    if (row != NULL) free(row);
+    
+    return code;
+}
+
+void overlay_center(Mat& bottom, Mat& layer, double alpha = 0) {
+    Rect roi = Rect((bottom.cols - layer.cols) / 2, (bottom.rows - layer.rows) / 2, layer.cols, layer.rows);
+    layer.copyTo(bottom(roi));
+}
+
 int main(int argc, const char * argv[]) {
     if (!parse_command_line(argc, (char * const *)argv)) {
         print_usage();
@@ -140,9 +203,9 @@ int main(int argc, const char * argv[]) {
     }
     
     // Load and transform to gray scale
-    Mat front = imread(frontlayer, CV_LOAD_IMAGE_GRAYSCALE);
-    Mat back  = imread(backlayer,  CV_LOAD_IMAGE_GRAYSCALE);
-    
+    Mat front = imread(front_file, CV_LOAD_IMAGE_GRAYSCALE);
+    Mat back  = imread(back_file,  CV_LOAD_IMAGE_GRAYSCALE);
+
     // resize image to fit
     if (front.cols > back.cols) {
         if (front.rows > back.rows) {
@@ -166,43 +229,19 @@ int main(int argc, const char * argv[]) {
         }
     }
 
-    // convert colorspace into BGRA
-    cvtColor(front, front, CV_CVTCOLOR_GREY2BGRA);
-    cvtColor(back,  back,  CV_CVTCOLOR_GREY2BGRA);
+    // new layers, same size
+    auto size = Size(max(front.cols, back.cols), max(front.rows, back.rows));
     
-    // for front layer
-    // we remove 'white color' (above threshold)
-    for (auto pixel = front.begin<Vec4b>(); pixel != front.end<Vec4b>(); pixel++) {
-        if ((*pixel)[0] < front_threshold_value) {
-            (*pixel)[2] = (*pixel)[1] = (*pixel)[0] = 0;
-            (*pixel)[3] = 255;
-        } else {
-            (*pixel)[2] = (*pixel)[1] = (*pixel)[0] = 255;
-            (*pixel)[3] = K_TRANSPARENT_ALPHA;
-        }
-    }
+    Mat frontlayer(size, CV_8U, Scalar(255));
+    Mat backlayer(size, CV_8U, Scalar(0));
     
-    // for back layer
-    // we remove 'black color' (below threshold)
-    for (auto pixel = back.begin<Vec4b>(); pixel != back.end<Vec4b>(); pixel++) {
-        if ((*pixel)[0] > back_threshold_value) {
-            (*pixel)[2] = (*pixel)[1] = (*pixel)[0] = 255;
-            (*pixel)[3] = 255;
-        } else {
-            (*pixel)[2] = (*pixel)[1] = (*pixel)[0] = 0;
-            (*pixel)[3] = K_TRANSPARENT_ALPHA;
-        }
-    }
+    overlay_center(frontlayer, front);
+    overlay_center(backlayer, back);
     
-    Mat result = front.clone();
-    Rect roi = Rect((front.cols - back.cols) / 2, (front.rows - back.rows) / 2, back.cols, back.rows);
-    Mat fusion = result(roi);
-    addWeighted(fusion, 0.5, back, 0.5, 0.0, fusion);
-    
-    imwrite(output, result);
+    magic(output, size, frontlayer, backlayer);
 
-    free((void *)frontlayer);
-    free((void *)backlayer);
+    free((void *)front_file);
+    free((void *)back_file);
     free((void *)output);
     return 0;
 }
