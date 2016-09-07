@@ -8,7 +8,7 @@ Tested on macOS
 
 ### Usage
 
-```hoshizora -f front.jpg -b back.jpg -o rem.png -d 64```
+```hoshizora -f front.jpg -b back.jpg -o rem.png -d 100```
 
 ```
 -f front layer, any image format that supported by OpenCV
