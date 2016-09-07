@@ -31,16 +31,16 @@ using namespace cv;
 char * front_file = NULL;
 char * back_file = NULL;
 char * output = NULL;
-int front_increse = 0;
-int back_decrese = 0;
+int front_increase = 0;
+int back_decrease = 0;
 
 static struct option long_options[] = {
     {"help",               no_argument,       0, 'h'},
     {"front",              required_argument, 0, 'f'},
     {"back",               required_argument, 0, 'b'},
     {"ouput",              required_argument, 0, 'o'},
-    {"increse brightness", optional_argument, 0, 'i'},
-    {"decrese brightness", optional_argument, 0, 'd'},
+    {"increase brightness", optional_argument, 0, 'i'},
+    {"decrease brightness", optional_argument, 0, 'd'},
     {0, 0, 0, 0}
 };
 
@@ -50,8 +50,8 @@ static struct option long_options[] = {
 void print_usage() {
     fprintf(stderr, "Usage: hoshizora [-f front layer]\n"
                     "                 [-b back layer]\n"
-                    "                 [-i increse brightness for front layer]\n"
-                    "                 [-d decrese brightness for back layer]\n"
+                    "                 [-i increase brightness for front layer]\n"
+                    "                 [-d decrease brightness for back layer]\n"
                     "                 [-o ouput]\n"
                     "\n"
                     "                 -h To print this help\n");
@@ -87,14 +87,14 @@ int parse_command_line(int argc, char * const * argv) {
             }
             case 'i': {
                 // no abs here
-                // intended, in case you need decrese the brightness for front layer
-                front_increse = atoi(optarg);
+                // intended, in case you need to decrease the brightness for front layer
+                front_increase = atoi(optarg);
                 break;
             }
             case 'd': {
                 // no abs here
-                // intended, in case you need increse the brightness for back layer
-                back_decrese = atoi(optarg);
+                // intended, in case you need to increase the brightness for back layer
+                back_decrease = atoi(optarg);
                 break;
             }
             case '?':
@@ -248,8 +248,8 @@ int main(int argc, const char * argv[]) {
     }
     
     // adjust brightness
-    front = front + Scalar(front_increse);
-    back = back + Scalar(-back_decrese);
+    front = front + Scalar(front_increase);
+    back = back + Scalar(-back_decrease);
 
     // new layers, same size
     auto size = Size(max(front.cols, back.cols), max(front.rows, back.rows));
